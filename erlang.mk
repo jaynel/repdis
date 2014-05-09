@@ -60,6 +60,11 @@ export RELX
 
 RELX_URL ?= https://github.com/erlware/relx/releases/download/v0.6.0/relx
 RELX_OPTS ?=
+RELX_OUTPUT_DIR ?= _rel
+
+ifneq ($(firstword $(subst -o,,$(RELX_OPTS))),)
+	RELX_OUTPUT_DIR = $(firstword $(subst -o,,$(RELX_OPTS)))
+endif
 
 define get_relx
 	wget -O $(RELX) $(RELX_URL) || rm $(RELX)
@@ -73,7 +78,7 @@ $(RELX):
 	@$(call get_relx)
 
 clean-rel:
-	@rm -rf _rel
+	$(gen_verbose) rm -rf $(RELX_OUTPUT_DIR)
 
 endif
 
@@ -106,7 +111,7 @@ COMPILE_FIRST_PATHS = $(addprefix src/,$(addsuffix .erl,$(COMPILE_FIRST)))
 
 all: deps app
 
-clean-all: gc clean clean-deps clean-docs
+clean-all: clean clean-deps clean-docs
 	$(gen_verbose) rm -rf .$(PROJECT).plt $(DEPS_DIR) logs
 
 app: ebin/$(PROJECT).app
@@ -150,9 +155,6 @@ ebin/$(PROJECT).app: $(shell find src -type f -name \*.erl) \
 		$(call compile_xyrl,$(filter %.xrl %.yrl,$?)))
 	$(if $(strip $(filter %.dtl,$?)), \
 		$(call compile_dtl,$(filter %.dtl,$?)))
-
-gc:
-	$(gen_verbose) rm *~ src/*~ test/*~
 
 clean:
 	$(gen_verbose) rm -rf ebin/ test/*.beam erl_crash.dump
@@ -212,11 +214,14 @@ clean-docs:
 
 $(foreach dep,$(TEST_DEPS),$(eval $(call dep_target,$(dep))))
 
+TEST_ERLC_OPTS ?= +debug_info +warn_export_vars +warn_shadow_vars +warn_obsolete_guard
+TEST_ERLC_OPTS += -DTEST=1 -DEXTRA=1 +'{parse_transform, eunit_autoexport}'
+
 build-test-deps: $(ALL_TEST_DEPS_DIRS)
 	@for dep in $(ALL_TEST_DEPS_DIRS) ; do $(MAKE) -C $$dep; done
 
 build-tests: build-test-deps
-	$(gen_verbose) erlc -v $(ERLC_OPTS) -o test/ \
+	$(gen_verbose) erlc -v $(TEST_ERLC_OPTS) -o test/ \
 		$(wildcard test/*.erl test/*/*.erl) -pa ebin/
 
 CT_OPTS ?=
@@ -231,7 +236,7 @@ CT_RUN = ct_run \
 CT_SUITES ?=
 
 define test_target
-test_$(1): ERLC_OPTS += -DTEST=1 +'{parse_transform, eunit_autoexport}'
+test_$(1): ERLC_OPTS = $(TEST_ERLC_OPTS)
 test_$(1): clean deps app build-tests
 	@if [ -d "test" ] ; \
 	then \
@@ -243,7 +248,7 @@ endef
 
 $(foreach test,$(CT_SUITES),$(eval $(call test_target,$(test))))
 
-tests: ERLC_OPTS += -DTEST=1 +'{parse_transform, eunit_autoexport}'
+tests: ERLC_OPTS = $(TEST_ERLC_OPTS)
 tests: clean deps app build-tests
 	@if [ -d "test" ] ; \
 	then \

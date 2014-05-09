@@ -1,6 +1,8 @@
 *~
 *.beam
 *.plt
+deps
 ebin
 logs
+*.packages.*
 
